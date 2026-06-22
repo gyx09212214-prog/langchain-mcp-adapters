@@ -452,6 +452,55 @@ async def test_convert_mcp_tool_to_langchain_tool():
     ]
 
 
+async def test_convert_mcp_tool_preserves_reserved_argument_names():
+    """MCP arguments named like LangChain run config are passed through."""
+    tool_input_schema = {
+        "properties": {
+            "config": {"title": "Config", "type": "string"},
+            "run_manager": {"title": "Run Manager", "type": "string"},
+            "callbacks": {"title": "Callbacks", "type": "string"},
+        },
+        "required": ["config", "run_manager", "callbacks"],
+        "title": "ToolSchema",
+        "type": "object",
+    }
+    session = AsyncMock()
+    session.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text="ok")],
+        isError=False,
+    )
+    mcp_tool = MCPTool(
+        name="reserved_args",
+        description="Tool with reserved argument names",
+        inputSchema=tool_input_schema,
+    )
+
+    lc_tool = convert_mcp_tool_to_langchain_tool(session, mcp_tool)
+
+    await lc_tool.ainvoke(
+        {
+            "args": {
+                "config": "user-config",
+                "run_manager": "user-run-manager",
+                "callbacks": "user-callbacks",
+            },
+            "id": "1",
+            "type": "tool_call",
+        },
+        config={"configurable": {"thread_id": "internal"}},
+    )
+
+    session.call_tool.assert_called_once_with(
+        "reserved_args",
+        {
+            "config": "user-config",
+            "run_manager": "user-run-manager",
+            "callbacks": "user-callbacks",
+        },
+        progress_callback=None,
+    )
+
+
 async def test_load_mcp_tools():
     tool_input_schema = {
         "properties": {

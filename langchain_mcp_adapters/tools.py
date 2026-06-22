@@ -119,6 +119,23 @@ class _MCPToolExecutionError(ToolException):
         self.tool_content = tool_content
 
 
+class _MCPStructuredTool(StructuredTool):
+    """StructuredTool variant that preserves MCP arguments named like run config.
+
+    LangChain Core injects internal run config values based on the public
+    `StructuredTool._arun` signature. MCP tools can legally define parameters
+    such as `config` or `run_manager`, so the adapter avoids that signature and
+    forwards the validated tool kwargs directly to its coroutine.
+    """
+
+    async def _arun(self, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+        """Use the MCP tool coroutine asynchronously."""
+        if self.coroutine is None:
+            msg = "MCP tools require an async coroutine."
+            raise NotImplementedError(msg)
+        return await self.coroutine(*args, **kwargs)
+
+
 def _handle_mcp_tool_error(
     error: ToolException,
 ) -> list[ToolMessageContentBlock]:
@@ -525,7 +542,7 @@ def convert_mcp_tool_to_langchain_tool(
     # current content-block recognition and is locked by
     # `test_mcp_tool_error_preserves_non_text_content`.
     error_handler = _handle_mcp_tool_error if handle_tool_errors else False
-    return StructuredTool(
+    return _MCPStructuredTool(
         name=lc_tool_name,
         description=tool.description or "",
         args_schema=tool.inputSchema,
